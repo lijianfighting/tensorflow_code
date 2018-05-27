@@ -1,0 +1,2 @@
+model_checkpoint_path: "/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/sensor_model"
+all_model_checkpoint_paths: "/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/sensor_model"

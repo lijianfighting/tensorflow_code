@@ -19,6 +19,8 @@ c = 1
 #训练数据和测试数据保存地址
 train_path = "/Users/lijian/Desktop/tensorflow_code/aero_engine/train_sensor.txt"
 test_path = "/Users/lijian/Desktop/tensorflow_code/aero_engine/test_sensor.txt"
+MODEL_SAVE_PATH = "/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model"
+MODEL_NAME = "sensor_model"  #保存训练好的模型
 
 #读取图片及其标签函数
 def read_image(path):
@@ -42,8 +44,14 @@ def read_image(path):
     f.close()
     return np.asarray(images,dtype=np.float32),np.asarray(labels,dtype=np.int32)
 
+#每次获取batch_size个样本进行训练或测试
+def get_batch(data,label,batch_size):
+    for start_index in range(0,len(data)-batch_size+1,batch_size):
+        slice_index = slice(start_index,start_index+batch_size) #切片
+        yield data[slice_index],label[slice_index] # yield是一个关键词，类似return, 不同之处在于，yield返回的是一个生成器
 
-def inference(input_tensor,train,regularizer): #中间的train表示是否用dropout
+
+def inference(input_tensor,train,regularizer): #中间的train表示是否是训练过程（还是测试）
 
     #第一层：卷积层，过滤器的尺寸为5×5，深度为6（个数）,不使用全0补充，步长为1。
     #尺寸变化：32×32×1->28×28×6
@@ -112,102 +120,186 @@ def inference(input_tensor,train,regularizer): #中间的train表示是否用dro
             tf.add_to_collection('losses',regularizer(fc3_weights))
         fc3_biases = tf.get_variable('bias',[7],initializer=tf.truncated_normal_initializer(stddev=0.1))
         logit = tf.matmul(fc2,fc3_weights) + fc3_biases
+        #logit = tf.nn.softmax(logits=logit) #自己加个softmax,softmax就是把几个数归一化成几个概率
     return logit
+
 
 
 #读取训练数据及测试数据（并将所有的图片重新设置尺寸为32*32）            
 train_data,train_label = read_image(train_path)
 test_data,test_label = read_image(test_path)
-#打乱训练数据及测试数据
+
+# #打乱训练数据及测试数据
 train_image_num = len(train_data) #60000张图片
 train_image_index = np.arange(train_image_num) #np.arange(train_image_num) 结果为[0,1,2...59999]
 np.random.shuffle(train_image_index) #random.shuffle 随机打乱函数
 train_data = train_data[train_image_index]
 train_label = train_label[train_image_index]
 
-test_image_num = len(test_data)
-test_image_index = np.arange(test_image_num)
-np.random.shuffle(test_image_index)
-test_data = test_data[test_image_index]
-test_label = test_label[test_image_index]
+# test_image_num = len(test_data)
+# test_image_index = np.arange(test_image_num)
+# np.random.shuffle(test_image_index)
+# test_data = test_data[test_image_index]
+# test_label = test_label[test_image_index]
 
 print test_data
 print test_label
 
-#搭建CNN
-x = tf.placeholder(tf.float32,[None,w,h,c],name='x') #第一个维度为batch的大小，先设为None
-y_ = tf.placeholder(tf.int32,[None],name='y_')
 
-# 定义正则化
-regularizer = tf.contrib.layers.l2_regularizer(0.001)
-# 前向传播得到预测值y
-y = inference(x,True,regularizer) #中间参数表示是否用dropout
-# 定义损失函数，计算交叉熵损失
-cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y,labels=y_)
-cross_entropy_mean = tf.reduce_mean(cross_entropy) #reduce_mean计算平均值
-loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
-# 定义训练过程（梯度下降一次）
-train_op = tf.train.AdamOptimizer(0.001).minimize(loss)
-# 计算准确率
-# 预测和实际值比较，tf.equal函数会得到True或False，accuracy首先将tf.equal比较得到的布尔值转为float型，即True转为1，False转为0，最后求平均值，即一组样本的正确率。
-# 比如：一组5个样本，tf.equal比较为[True False True False False],转化为float型为[1. 0 1. 0 0],准确率为2./5=40%。
-correct_prediction = tf.equal(tf.cast(tf.argmax(y,1),tf.int32),y_) #预测正确值为True，如[True False True False False]
-accuracy = tf.reduce_mean(tf.cast(correct_prediction,tf.float32)) #tf.cast()函数转换数据格式，这里将bool值转换为float型
+def train():
 
-#每次获取batch_size个样本进行训练或测试
-def get_batch(data,label,batch_size):
-    for start_index in range(0,len(data)-batch_size+1,batch_size):
-        slice_index = slice(start_index,start_index+batch_size) #切片
-        yield data[slice_index],label[slice_index] # yield是一个关键词，类似return, 不同之处在于，yield返回的是一个生成器
+    #搭建CNN
+    x = tf.placeholder(tf.float32,[None,w,h,c],name='x') #第一个维度为batch的大小，先设为None
+    y_ = tf.placeholder(tf.int32,[None],name='y_')
 
+    # 定义正则化
+    regularizer = tf.contrib.layers.l2_regularizer(0.001)
+    # 前向传播得到预测值y
+    y = inference(x,True,regularizer) #中间参数表示是否用dropout
+    # 定义损失函数，计算交叉熵损失
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y,labels=y_)
+    cross_entropy_mean = tf.reduce_mean(cross_entropy) #reduce_mean计算平均值
+    loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
+    # 定义训练过程（梯度下降一次）
+    train_op = tf.train.AdamOptimizer(0.001).minimize(loss)
+    # 计算准确率
+    # 预测和实际值比较，tf.equal函数会得到True或False，accuracy首先将tf.equal比较得到的布尔值转为float型，即True转为1，False转为0，最后求平均值，即一组样本的正确率。
+    # 比如：一组5个样本，tf.equal比较为[True False True False False],转化为float型为[1. 0 1. 0 0],准确率为2./5=40%。
+    correct_prediction = tf.equal(tf.cast(tf.argmax(y,1),tf.int32),y_) #预测正确值为True，如[True False True False],tf.argmax(y,1)取y中最大的值作为预测结果
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction,tf.float32)) #tf.cast()函数转换数据格式，这里将bool值转换为float型
 
-train_loss_plot = []
-test_loss_plot = [] #定义画图列表
+    y_pred = tf.argmax(tf.nn.softmax(logits=y), 1) #预测分类结果（自己写的）
 
 
-#创建Session会话
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer()) #初始化所有变量(权值，偏置等)
+    train_loss_plot = []
+    test_loss_plot = [] #定义画图列表
 
-    #将所有样本训练10次，每次训练中以128个为一组训练完所有样本。
-    #train_num可以设置大一些。
-    train_num = 500
-    batch_size = 100
+    # 初始化TensorFlow持久化类。
+    saver = tf.train.Saver(max_to_keep=1)
 
-    for i in range(train_num):
-    	# 训练集损失、正确率
-        train_loss,train_acc,batch_num = 0, 0, 0
-        for train_data_batch,train_label_batch in get_batch(train_data,train_label,batch_size):
-            _,err,acc = sess.run([train_op,loss,accuracy],feed_dict={x:train_data_batch,y_:train_label_batch}) #运行train_op，返回loss，accuracy
-            train_loss += err
-            train_acc += acc
-            batch_num += 1
-        train_loss_plot.append(train_loss / batch_num)
-        if i % 50 == 0:
-            print("After %d training step(s)" %(i))
-            print("train loss:",train_loss/batch_num)
-            print("train acc:",train_acc/batch_num)
-        #print("train batch numer:",batch_num) #自己加的，60000 / 128 = 468
-        # 测试集损失、正确率
-        test_loss,test_acc,batch_num = 0, 0, 0
-        for test_data_batch,test_label_batch in get_batch(test_data,test_label,batch_size):
-            err,acc = sess.run([loss,accuracy],feed_dict={x:test_data_batch,y_:test_label_batch}) #测试时没有运行train_op
-            test_loss += err; test_acc += acc; batch_num += 1
-        test_loss_plot.append(test_loss / batch_num)
-        if i % 50 == 0:
-            print("test loss:",test_loss/batch_num)
-            print("test acc:",test_acc/batch_num)
-        #print("test batch numer:",batch_num) #自己加的， 10000 / 128 = 78
-    x0 = range(train_num)
-    #plt.subplot(211)
-    pl.figure(1)
-    pl.plot(x0, test_loss_plot, 'r',label="test error") #测试集误差
-    pl.plot(x0, train_loss_plot, 'g',label="train error")  #训练集误差
-    plt.legend(loc='upper right')
-    plt.xlabel('epoch')
-    plt.ylabel('error rate')
-    plt.title('The training process of CNN')
-    pl.show()# show the plot on the screen
+    #创建Session会话
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer()) #初始化所有变量(权值，偏置等)
+
+        #将所有样本训练10次，每次训练中以128个为一组训练完所有样本。
+        #train_num可以设置大一些。
+        train_num = 500
+        batch_size = 100
+
+        for i in range(train_num):
+        	# 训练集损失、正确率
+            train_loss,train_acc,batch_num = 0, 0, 0
+            for train_data_batch,train_label_batch in get_batch(train_data,train_label,batch_size):
+                _,err,acc = sess.run([train_op,loss,accuracy],feed_dict={x:train_data_batch,y_:train_label_batch}) #运行train_op，返回loss，accuracy
+                train_loss += err
+                train_acc += acc
+                batch_num += 1
+            train_loss_plot.append(train_loss / batch_num)
+            if i % 50 == 0:
+                print("After %d training step(s)" %(i))
+                print("train loss:",train_loss/batch_num)
+                print("train acc:",train_acc/batch_num)
+            #print("train batch numer:",batch_num) #自己加的，60000 / 128 = 468
+            # 测试集损失、正确率
+            test_loss,test_acc,batch_num = 0, 0, 0
+            for test_data_batch,test_label_batch in get_batch(test_data,test_label,batch_size):
+                err,acc = sess.run([loss,accuracy],feed_dict={x:test_data_batch,y_:test_label_batch}) #测试时没有运行train_op
+                test_loss += err; test_acc += acc; batch_num += 1
+
+            test_loss_plot.append(test_loss / batch_num)
+            if i % 50 == 0:
+                print("test loss:",test_loss/batch_num)
+                print("test acc:",test_acc/batch_num)
+                
+            #print("test batch numer:",batch_num) #自己加的， 10000 / 128 = 78
+
+        saver.save(sess, os.path.join(MODEL_SAVE_PATH, MODEL_NAME)) #保存训练好的模型, os.path.join拼接路径
+
+        x0 = range(train_num)
+        #plt.subplot(211)
+        plt.figure(1)
+        plt.plot(x0, test_loss_plot, 'r',label="test loss") #测试集误差
+        plt.plot(x0, train_loss_plot, 'g',label="train loss")  #训练集误差
+        plt.legend(loc='upper right')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.title('The training process of CNN')
+        #plt.show()  # show the plot on the screen
+
+        # 预测结果
+        y_predict = sess.run(y_pred,feed_dict={x:test_data,y_:test_label}) #测试时没有运行train_op，返回y_pred
+
+        print("The results of predict:", y_predict)
+        print("real values:", test_label)
+
+        x1 = range(len(test_data))
+        pl.figure(2)
+        plt.plot(x1, test_label,'g.', markersize=1,linewidth=1.0,label="real values")  #实际值
+        plt.plot(x1, y_predict,'r.', markersize=1,linewidth=1.0,label="predict values")  #预测值
+        plt.legend(loc='upper left')
+        plt.xlabel('epoch')
+        plt.ylabel('type of fault')
+        plt.title('The results of classification')
+        pl.show()  # show the plot on the screen
+
+
+# 调用训练好的模型去测试
+def evaluate():
+    #搭建CNN
+    x = tf.placeholder(tf.float32,[None,w,h,c],name='x') #第一个维度为batch的大小，先设为None
+    y_ = tf.placeholder(tf.int32,[None],name='y_')
+
+    # 定义正则化
+    regularizer = tf.contrib.layers.l2_regularizer(0.001)
+    # 前向传播得到预测值y
+    y = inference(x,False,regularizer) #中间参数表示是否是训练过程（还是测试）
+    # # 定义损失函数，计算交叉熵损失
+    # cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y,labels=y_)
+    # cross_entropy_mean = tf.reduce_mean(cross_entropy) #reduce_mean计算平均值
+    # loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
+    # # 定义训练过程（梯度下降一次）
+    # train_op = tf.train.AdamOptimizer(0.001).minimize(loss)
+    # # 计算准确率
+    # # 预测和实际值比较，tf.equal函数会得到True或False，accuracy首先将tf.equal比较得到的布尔值转为float型，即True转为1，False转为0，最后求平均值，即一组样本的正确率。
+    # # 比如：一组5个样本，tf.equal比较为[True False True False False],转化为float型为[1. 0 1. 0 0],准确率为2./5=40%。
+    # correct_prediction = tf.equal(tf.cast(tf.argmax(y,1),tf.int32),y_) #预测正确值为True，如[True False True False],tf.argmax(y,1)取y中最大的值作为预测结果
+    # accuracy = tf.reduce_mean(tf.cast(correct_prediction,tf.float32)) #tf.cast()函数转换数据格式，这里将bool值转换为float型
+
+    y_pred = tf.argmax(tf.nn.softmax(logits=y), 1) #预测分类结果（自己写的）
+
+    #创建Session会话
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer()) #初始化所有变量(权值，偏置等)  不能这样初始化？？
+        saver = tf.train.import_meta_graph('/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/sensor_model.meta')
+        saver.restore(sess, tf.train.latest_checkpoint("/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/"))
+
+        # 预测结果
+        y_predict = sess.run(y_pred,feed_dict={x:test_data,y_:test_label}) #测试时没有运行train_op，返回y_pred
+        print(y_predict)
+
+        x2 = range(len(test_data))
+        pl.figure(1)
+        plt.plot(x2, test_label,'g.', markersize=1,linewidth=1.0,label="real values")  #实际值
+        plt.plot(x2, y_predict,'r.', markersize=1,linewidth=1.0,label="predict values")  #预测值
+        plt.legend(loc='upper left')
+        plt.xlabel('epoch')
+        plt.ylabel('type of fault')
+        plt.title('The results of classification')
+        pl.show()  # show the plot on the screen
+
+
+# ###  主程序
+def main(argv=None):
+    train()
+    #evaluate()
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+
 
 
 
