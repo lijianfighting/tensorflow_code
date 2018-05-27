@@ -130,7 +130,7 @@ y = inference(x,False,regularizer)
 cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y,labels=y_)
 cross_entropy_mean = tf.reduce_mean(cross_entropy) #reduce_mean计算平均值
 loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
-# 定义训练过程
+# 定义训练过程（梯度下降一次）
 train_op = tf.train.AdamOptimizer(0.001).minimize(loss)
 # 计算准确率
 # 预测和实际值比较，tf.equal函数会得到True或False，accuracy首先将tf.equal比较得到的布尔值转为float型，即True转为1，False转为0，最后求平均值，即一组样本的正确率。
@@ -163,15 +163,15 @@ with tf.Session() as sess:
             batch_num += 1
         print("train loss:",train_loss/batch_num)
         print("train acc:",train_acc/batch_num)
-        print("train batch numer:",batch_num) #自己加的，60000 / 128 = 468
+        #print("train batch numer:",batch_num) #自己加的，60000 / 128 = 468
         # 测试集损失、正确率
         test_loss,test_acc,batch_num = 0, 0, 0
         for test_data_batch,test_label_batch in get_batch(test_data,test_label,batch_size):
-            err,acc = sess.run([loss,accuracy],feed_dict={x:test_data_batch,y_:test_label_batch})
+            err,acc = sess.run([loss,accuracy],feed_dict={x:test_data_batch,y_:test_label_batch}) #测试时没有运行train_op
             test_loss += err; test_acc += acc; batch_num += 1
         print("test loss:",test_loss/batch_num)
         print("test acc:",test_acc/batch_num)
-        print("test batch numer:",batch_num) #自己加的， 10000 / 128 = 78
+        #print("test batch numer:",batch_num) #自己加的， 10000 / 128 = 78
 
 
 
