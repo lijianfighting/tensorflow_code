@@ -1,7 +1,7 @@
 # coding: utf-8
 # 传感器故障诊断
 # Author: jimmy
-# Data: 20180527
+# Data: 20180604
 
 from skimage import io,transform
 import os
@@ -11,16 +11,18 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import pylab as pl
 
+#tf.device('/gpu:0')  
+os.environ['CUDA_VISIBLE_DEVICES']='0'  
 #将所有的图片重新设置尺寸为32*32
 w = 16
 h = 16
 c = 1
 
 #训练数据和测试数据保存地址
-train_path = "/Users/lijian/Desktop/tensorflow_code/aero_engine/train_sensor.txt"
-test_path = "/Users/lijian/Desktop/tensorflow_code/aero_engine/test_sensor.txt"
-MODEL_SAVE_PATH = "/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model"
-MODEL_NAME = "sensor_model"  #保存训练好的模型
+train_path = "train_engine.txt"
+test_path = "test_engine.txt"
+MODEL_SAVE_PATH = "Engine_model"
+MODEL_NAME = "engine_model"  #保存训练好的模型
 
 #读取图片及其标签函数
 def read_image(path):
@@ -29,13 +31,16 @@ def read_image(path):
     labels = []
     line = f.readline()
     while line:
-        list1 = line.split(" ") #按空格分开
-        list2 = list1[:256] #取前256个数
+        list1 = line.split("\t") #按空格分开
+        
+        list2 = list1[:8] #取前256个数
         image = [float(item) for item in list2] #list中的str转为float
-        label = float(list1[306])
+        image.append(0) # 每组数据后面加个0，使长度为9，后面再转成3*3
+        print image
+        label = float(list1[8])
 
         image = np.array(image) #list转为array才能reshape
-        image = image.reshape((16,16))
+        image = image.reshape((3,3))
         image = transform.resize(image,(w,h,c)) #将所有的图片重新设置尺寸为32*32*1
         images.append(image)
         labels.append(label)
@@ -142,8 +147,8 @@ train_label = train_label[train_image_index]
 # test_data = test_data[test_image_index]
 # test_label = test_label[test_image_index]
 
-print test_data
-print test_label
+print (test_data)
+print (test_label)
 
 
 def train():
@@ -183,7 +188,7 @@ def train():
 
         #将所有样本训练10次，每次训练中以128个为一组训练完所有样本。
         #train_num可以设置大一些。
-        train_num = 1000
+        train_num = 200
         batch_size = 100
 
         for i in range(train_num):
@@ -229,15 +234,15 @@ def train():
         # 预测结果
         y_predict = sess.run(y_pred,feed_dict={x:test_data,y_:test_label}) #测试时没有运行train_op，返回y_pred
 
-        print("The results of predict:", y_predict)
         print("real values:", test_label)
+        print("The results of predict:", y_predict)
 
         x1 = range(len(test_data))
         pl.figure(2)
         plt.plot(x1, test_label,'g.', markersize=1,linewidth=1.0,label="real values")  #实际值
         plt.plot(x1, y_predict,'r.', markersize=1,linewidth=1.0,label="predict values")  #预测值
         plt.legend(loc='upper left')
-        plt.xlabel('epoch')
+        plt.xlabel('data')
         plt.ylabel('type of fault')
         plt.title('The results of classification')
         pl.show()  # show the plot on the screen
@@ -267,22 +272,25 @@ def evaluate():
 
     y_pred = tf.argmax(tf.nn.softmax(logits=y), 1) #预测分类结果（自己写的）
 
+    # 初始化TensorFlow持久化类。
+    saver = tf.train.Saver(max_to_keep=1)
     #创建Session会话
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer()) #初始化所有变量(权值，偏置等)  不能这样初始化？？
-        saver = tf.train.import_meta_graph('/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/sensor_model.meta')
-        saver.restore(sess, tf.train.latest_checkpoint("/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/"))
-
+        # saver = tf.train.import_meta_graph('/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/sensor_model.meta')
+        # saver.restore(sess, tf.train.latest_checkpoint("/Users/lijian/Desktop/tensorflow_code/aero_engine/Sensor_model/"))
+        ckpt = tf.train.get_checkpoint_state("./Engine_model")
+        saver.restore(sess, ckpt.model_checkpoint_path) #恢复模型
         # 预测结果
         y_predict = sess.run(y_pred,feed_dict={x:test_data,y_:test_label}) #测试时没有运行train_op，返回y_pred
-        print(y_predict)
+        print("predict data:", y_predict)
 
         x2 = range(len(test_data))
         pl.figure(1)
         plt.plot(x2, test_label,'g.', markersize=1,linewidth=1.0,label="real values")  #实际值
         plt.plot(x2, y_predict,'r.', markersize=1,linewidth=1.0,label="predict values")  #预测值
         plt.legend(loc='upper left')
-        plt.xlabel('epoch')
+        plt.xlabel('data')
         plt.ylabel('type of fault')
         plt.title('The results of classification')
         pl.show()  # show the plot on the screen
@@ -290,8 +298,8 @@ def evaluate():
 
 # ###  主程序
 def main(argv=None):
-    train()
-    #evaluate()
+    #train()
+    evaluate()
 
 if __name__ == '__main__':
     main()

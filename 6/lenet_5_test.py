@@ -150,7 +150,7 @@ with tf.Session() as sess:
 
     #将所有样本训练10次，每次训练中以128个为一组训练完所有样本。
     #train_num可以设置大一些。
-    train_num = 2
+    train_num = 10
     batch_size = 128
 
     for i in range(train_num):
